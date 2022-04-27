@@ -319,6 +319,9 @@ async def answer(event: types.Message, state: FSMContext):
             
         except Aex.BotBlocked:
             await event.answer("Этот пользователь заблокировал бота")
+        except Aex.ChatNotFound:
+            # Тестовые пользователи
+            await event.answer("Такого пользователя нет в Telegram")
         except Exception as ex:
             print(ex)
             await event.answer(

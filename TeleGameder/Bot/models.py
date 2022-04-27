@@ -1,4 +1,5 @@
 from django.db import models
+from django.urls import reverse
 
 
 class Users(models.Model):
@@ -52,3 +53,6 @@ class Games(models.Model):
     class Meta:
         verbose_name = "Game"
         verbose_name_plural = "Games"
+
+    def get_absolute_url(self):
+        return reverse("Bot:game", kwargs={"game": self.title})

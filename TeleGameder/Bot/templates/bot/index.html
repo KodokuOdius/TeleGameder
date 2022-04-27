@@ -1,0 +1,28 @@
+{% extends 'bot/base.html' %}
+
+
+
+{% block sidebar %}
+<ul>
+	{% for game in games %}
+		<h3>
+			<a href="{{ game.get_absolute_url }}">{{ game.title }}</a>
+		</h3>
+	{% endfor %}
+</ul>
+{% endblock sidebar %}
+
+{% block content %}
+<ul>
+	{% for user in users %}
+		<h2>{{ user.username }}</h2>
+		<li>
+			<div>
+				<p>Любимая игра: {{ user.game }}</p>
+				<p>Ищет игроков из {{ user.search_game }}</p>
+			</div>
+			{{ user.about }}
+		</li>
+	{% endfor %}
+</ul>
+{% endblock %}

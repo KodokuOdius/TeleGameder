@@ -457,8 +457,7 @@ async def start_bot(event: types.Message):
     )
 
     if is_created:
-        # start Search
-        await event.answer(event.text)
+        await profile_menu(event=event)
     else:
         await event.answer(
             "Привет, Я вижу тебя впервые)\n " +

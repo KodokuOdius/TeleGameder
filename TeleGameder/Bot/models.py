@@ -10,12 +10,12 @@ class Users(models.Model):
         verbose_name="UserName in Bot",
         max_length=255
     )
-    game = models.ForeignKey(
-        to="Bot.Games",
-        to_field="title",
+    game = models.CharField(
+        #to="Bot.Games",
+        #to_field="title",
         verbose_name="Favorite Game",
         max_length=255,
-        on_delete=models.DO_NOTHING
+        #on_delete=models.DO_NOTHING
     )
     about = models.TextField(
         verbose_name="Personal Info"

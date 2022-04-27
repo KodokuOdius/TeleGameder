@@ -5,7 +5,13 @@ Micro Tinder Telegram Bot for gamers with using Django
 Django, Django ORM (как связь с БД), aiogram
 
 # Инструкция для проекты:
-Чтобы весь проект работал корректно, достаточно в директории 'TeleGameder/TeleGameder' создать файл 'local_settings.py' и создать переменную с токеном для работы бота 'TOKEN'
+Для работы проекта необходимо прописать команды по порядку из директории 'TeleGameder/TeleGameder'
+1. 'python manage.py makemigrations'
+2. 'python manage.py migrate'
+
+Потом запустить файл 'init_test_db.py' для инициализации тестовой базы данных
+
+Чтобы бот работал корректно, достаточно в директории 'TeleGameder/TeleGameder' создать файл 'local_settings.py' и создать переменную с токеном для работы бота 'TOKEN'
 
 Чтобы запустить бота необходимо прописать команду из директории 'TeleGameder/TeleGameder' (желательно в отдельном терминале) - 'python manage.py tg_bot'
 

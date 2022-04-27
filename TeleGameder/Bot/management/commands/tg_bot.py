@@ -9,6 +9,9 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.filters import Command
 from aiogram.dispatcher import FSMContext
+from aiogram import exceptions as Aex
+
+from random import choice as ch
 
 from aiogram.types import ReplyKeyboardRemove, \
     ReplyKeyboardMarkup, KeyboardButton, \
@@ -28,6 +31,13 @@ bot = Bot(token=settings.TOKEN)
 dp = Dispatcher(bot=bot, storage=MemoryStorage())
 
 
+MainKey = (
+    ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
+    .row(
+        KeyboardButton("🤝"),
+        KeyboardButton("➡")
+    )
+)
 
 
 
@@ -80,7 +90,7 @@ def get_games():
 @sync_to_async(thread_sensitive=True)
 def create_user(data):
     try:
-        Users.objects.create(
+        Users.objects.get_or_create(
             username=data["username"],
             game=data["game"],
             about=data["about"],
@@ -94,10 +104,23 @@ def create_user(data):
         return False
 
 
+
 @sync_to_async(thread_sensitive=True)
-def set_user(id, *, **kwargs):
+def get_users_by_prefer(id, game):
     try:
-        user = Users.objects.filter(rg_id=id).update(kwargs)
+        from django.db.models import Q
+
+        friends = Users.objects.filter(Q(search_game=game) & Q(is_search=1)).exclude(tg_id=id)
+        friends = [friend for friend in friends]
+        return friends
+    except Exception as ex:
+        print(ex)
+
+
+@sync_to_async(thread_sensitive=True)
+def update_user(id, *args, **kwargs):
+    try:
+        user = Users.objects.filter(tg_id=id).update(**kwargs)
         return True
     except Exception as ex:
         print(ex)
@@ -189,16 +212,29 @@ async def last_question(event: types.Message, state: FSMContext):
 @dp.message_handler(state=RegUser.is_correct)
 async def finish(event: types.Message, state: FSMContext):
     if event.text == "Да 😁":
-        result = await create_user(await state.get_data())
-
-        if result:
-            await event.answer(
-                "Я тебя зарегестировал!\n" +
-                "Можешь искать друзей",
-                reply_markup=ReplyKeyboardRemove()
+        user = await get_user(event.from_user.id)
+        data = await state.get_data()
+        if not user:
+            result = await create_user(data)
+        else:
+            result = await update_user(
+                event.from_user.id,
+                username=data["username"],
+                game=data["game"],
+                about=data["about"],
+                search_game=data["search"]
             )
 
-        await state.reset_state()
+            await state.reset_state()
+            return await profile_menu(event)
+
+        # if result:
+        #     await event.answer(
+        #         "Прекрасно! Я тебя зарегестировал!"
+        #     )
+        
+        # await start_search(event=event, state=state)
+
 
     elif event.text == "Нет заново) 🤣":
         await event.answer(
@@ -220,8 +256,99 @@ class ProfileMenu(StatesGroup):
     new_search = State()
 
 
+class SearchState(StatesGroup):
+    search = State()
 
-@dp.message_handler(stare=ProfileMenu.menu, text="😁")
+
+@dp.message_handler(state=ProfileMenu.menu, text="😙")
+async def start_search(event: types.Message, state: FSMContext):
+    await event.answer(
+        "Начнём поиск Тимейтов\n" +
+        "➡ - Следующая карточка\n" +
+        "🤝 - Отправляет приглашение к дружбе создателю карточки\n\n" +
+        "Чтобы закончить с поисками пришли любое сообщение (отличное от содержания кнопок)"
+    )
+    user = await get_user(event.from_user.id)
+
+    friends = await get_users_by_prefer(event.from_user.id, user.search_game)
+
+    if not friends:
+        return await event.answer(
+            "Нет пользователей с такой игрой, попробуй выбрать что-то другое\n" +
+            "/profile"
+        )
+    friend = friends.pop()
+
+    await event.answer(
+        f"{friend.username}\n" +
+        f"Любимая игра: {friend.game}\n" +
+        f"Информация: {friend.about}",
+        reply_markup=MainKey
+    )
+
+    await SearchState.search.set()
+    await state.update_data(friend_id=friend.tg_id, friends=friends)
+
+
+@dp.message_handler(state=SearchState.search)
+async def answer(event: types.Message, state: FSMContext):
+    answer = event.text
+    if answer not in ["🤝", "➡"]:
+        await event.answer("Закончим с поиском)")
+        await state.reset_state()
+        return await profile_menu(event)
+
+    if answer == "🤝":
+        data = await state.get_data()
+        friend_id = data["friend_id"]
+
+        try:
+            user_name = event.from_user.username
+
+            await event.bot.send_message(
+                chat_id=friend_id,
+                text=(
+                    f"Внимание! Твоя корточка понравилась пользователю @{user_name}"
+                )
+            )
+
+            await event.answer(
+                "Твой лайк отправлем этому пользователю\n" +
+                "Давай дальше"
+            )
+            
+        except Aex.BotBlocked:
+            await event.answer("Этот пользователь заблокировал бота")
+        except Exception as ex:
+            print(ex)
+            await event.answer(
+                "Не могу достать твой username из Telegram\n" +
+                "Придумай себе username или измени что-то в настройках, тогда я смогу отправить привет!"
+            )
+
+    data = await state.get_data()
+    friends = data["friends"]
+
+    if not friends:
+        await state.reset_state()
+
+        return await event.answer(
+            "Закончились пользователи по данной игре (("
+        )
+
+    friend = friends.pop()
+
+    await event.answer(
+        f"{friend.username}\n" +
+        f"Любимая игра: {friend.game}\n" +
+        f"Информация:\n {friend.about}",
+        reply_markup=MainKey
+    )
+
+    await state.update_data(friend_id=friend.tg_id, friends=friends)
+
+
+@dp.message_handler(state=ProfileMenu.menu, text="😁")
 async def new_search_game(event: types.Message):
     from random import shuffle as sh
 
@@ -231,7 +358,6 @@ async def new_search_game(event: types.Message):
     game_key = await gen_keybord(
         data=temp_data[:4]
     )
-
 
     await event.answer(
         "Напиши другую игру (оригинально название игры на английском) для поиска\n" +
@@ -244,8 +370,8 @@ async def new_search_game(event: types.Message):
 @dp.message_handler(state=ProfileMenu.new_search)
 async def catch_new_game(event: types.Message, state: FSMContext):
     new_search = event.text
-    await set_user(
-        id=event.from_user.id,
+    await update_user(
+        event.from_user.id,
         search_game=new_search
     )
 
@@ -265,8 +391,8 @@ async def new_profile(event: types.Message):
 async def change_search(event: types.Message, state: FSMContext):
     user = await get_user(event.from_user.id)
 
-    await set_user(
-        id=event.from_user.id,
+    await update_user(
+        event.from_user.id,
         is_search=0 if bool(user.is_search) else 1
     )
 
@@ -296,9 +422,9 @@ async def profile_menu(event: types.Message):
 
 
         await event.answer(
-            "Отлично! Вот твоя анкета\n" +
+            "Вот твоя анкета\n" +
             f"Твой username: {user}\n" + 
-            ("-В активном поиске" if bool(user.is_search) else "-Вне поиска\n") +
+            ("-В активном поиске\n" if bool(user.is_search) else "-Вне поиска\n") +
             f"Любимая игра: {user.game}\n" +
             f"Игра для поиска: {user.search_game}\n" +
             f"О себе: \n  {user.about}",
@@ -312,7 +438,6 @@ async def profile_menu(event: types.Message):
             "😑 - Написать анкету заново"
         )
         
-
         await ProfileMenu.menu.set()
         
 
@@ -332,10 +457,11 @@ async def start_bot(event: types.Message):
     )
 
     if is_created:
+        # start Search
         await event.answer(event.text)
     else:
         await event.answer(
-            "Привет, Я виже тебя впервые)\n " +
+            "Привет, Я вижу тебя впервые)\n " +
             "Здесь ты смодешь познакомиться с тимейтов по разным играм и найти друзей\n " +
             "Тебе нужно всего-то нужно ответь на несколько вопросов\n " +
             "Начнём!"
